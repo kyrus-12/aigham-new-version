@@ -1,18 +1,23 @@
 const express = require('express');
+const cors = require('cors');
+const path = require('path');
 const { Pool } = require('pg');
 
 const app = express();
+
+app.use(cors());
 app.use(express.json());
 
-// 1. Initialize PostgreSQL Connection Pool
+// 1. Serve static files (CSS, JS, images) from the repository root
+app.use(express.static(path.join(__dirname)));
+
+// 2. Database Connection Pool Setup
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: {
-    rejectUnauthorized: false // Required for Render PostgreSQL
-  }
+  ssl: { rejectUnauthorized: false }
 });
 
-// 2. Automatically create the table on server start
+// Auto-create Database Table on Startup
 async function initDatabase() {
   const createTableQuery = `
     CREATE TABLE IF NOT EXISTS section_unlocks (
@@ -29,11 +34,14 @@ async function initDatabase() {
     console.error('PostgreSQL initialization error:', err);
   }
 }
-
-// Run the setup function
 initDatabase();
 
-// 3. API Route: Fetch unlocks for a section
+// 3. Serve index.html on the Root Path ("/")
+app.get('/', (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// 4. API Routes
 app.get('/api/unlocks/:sectionId', async (req, res) => {
   const { sectionId } = req.params;
   try {
@@ -41,14 +49,12 @@ app.get('/api/unlocks/:sectionId', async (req, res) => {
       'SELECT module_key FROM section_unlocks WHERE section_id = $1',
       [sectionId]
     );
-    const unlockedKeys = result.rows.map(row => row.module_key);
-    res.json(unlockedKeys);
+    res.json(result.rows.map(row => row.module_key));
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// 4. API Route: Unlock a module for a section
 app.post('/api/unlock', async (req, res) => {
   const { sectionId, moduleKey } = req.body;
   try {
